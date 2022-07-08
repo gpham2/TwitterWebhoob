@@ -2,9 +2,9 @@
 
 const functions = require("firebase-functions");
 const axios = require("axios");
-//const DateTime = require('datetime-js');
 const hmacsha1 = require('hmacsha1');
 const { config } = require("firebase-functions");
+
 const {
     TWITTER_API_KEY: apiKey,
     TWITTER_API_KEY_SECRET: apiSecret,
@@ -12,6 +12,19 @@ const {
     TWITTER_TEMP_TEST_ACCESS_TOKEN: token,
     TWITTER_TEMP_TEST_ACCESS_SECRET: tokenSecret,
 } = process.env;
+
+
+const followList = [
+    ["1414660862372028443", 'C9Stratus'], 
+    ["1452520626", '@cloud9']
+];
+
+
+/* TODO: returns token info of user */
+function getToken(id) {
+    
+    return {'token': token, 'tokenSecret': tokenSecret};
+}
 
 
 /* generates oauth_nonce of some length */
@@ -34,78 +47,105 @@ function authTimestamp() {
 
 
 /* generates oath_signature */
-// use this https://developer.twitter.com/en/docs/authentication/oauth-1-0a/creating-a-signature
-// ??????? this thing so complicated ???? so much room for mistakes, not sure if this is right
 function authSignature(config) {
 
-    const paramString = `oauth_consumer_key=${config.oauth_consumer_key}&oauth_nonce=${config.oauth_nonce}&oauth_signature_method=${config.oauth_signature_method}&oauth_timestamp=${config.oauth_timestamp}&oauth_token=${config.oauth_token}&oauth_version=${config.oauth_version}`;
+    const paramString = `oauth_consumer_key=${config.oauth_consumer_key}&` +
+                        `oauth_nonce=${config.oauth_nonce}&` +
+                        `oauth_signature_method=${config.oauth_signature_method}&` +
+                        `oauth_timestamp=${config.oauth_timestamp}&` +
+                        `oauth_token=${config.oauth_token}&` +
+                        `oauth_version=${config.oauth_version}`;
+
     const sig_base_string = `POST&${config.url}&${encodeURIComponent(paramString)}`;
-    const sig_key = `${encodeURIComponent(apiSecret)}&${encodeURIComponent(tokenSecret)}`;
-    const hash = hmacsha1(sig_key, sig_base_string);
-    //const encoded = btoa(hash);
-    const encoded = hash.toString();
-    return encoded;
+    const sig_key = `${encodeURIComponent(apiSecret)}&${config.oauth_token_secret}`;
+    return hmacsha1(sig_key, sig_base_string);
+}
 
 
+/* retrieves user id based on twitter handle */
+async function getUserId(username) {
+    return ((await axios.get(`https://api.twitter.com/2/users/by/username/${username}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${bearer}`
+                }
+            })
+        ).data.data.id
+    );
+
+}
+
+/* performs the follow, id and tokenInfo belong to user doing the following*/
+async function follow(id, tokenInfo) {
+
+    const success = [];
+    
+    for (const item of followList) {
+        // generating request's timestamp and special nonce
+        const timeStamp = authTimestamp();
+        const nonce = authNonce();
+
+        // configurations for signature
+        const signature = encodeURIComponent(authSignature(
+            {
+                'url': `${encodeURIComponent(`https://api.twitter.com/2/users/${id}/following`)}`,
+                'oauth_consumer_key': `${encodeURIComponent(apiKey)}`,
+                'oauth_nonce': `${nonce}`,
+                'oauth_signature_method': `HMAC-SHA1`,
+                'oauth_timestamp': `${timeStamp}`,
+                'oauth_token': `${encodeURIComponent(tokenInfo.token)}`,
+                'oauth_token_secret': `${encodeURIComponent(tokenInfo.tokenSecret)}`,
+                'oauth_version': `1.0`
+            }        
+        ));
+        
+        // generating header 
+        const header = {
+            headers: {
+                'Content-Type':     'application/json',
+                'Authorization':    `OAuth oauth_signature_method="HMAC-SHA1",` +
+                                    `oauth_version="1.0",`                      +
+                                    `oauth_token="${tokenInfo.token}",`         +
+                                    `oauth_consumer_key="${apiKey}",`           +
+                                    `oauth_timestamp="${timeStamp}",`           +
+                                    `oauth_nonce="${nonce}",`                   +
+                                    `oauth_signature="${signature}"`            
+            }
+        };
+            
+        // making request
+        const follow = await axios.post(
+                    `https://api.twitter.com/2/users/${id}/following`,
+                    {
+                        "target_user_id": `${item[0]}`
+                    },
+                    header
+        );
+        success.push(follow.data.data.following);
+    };
+    
+    return success;
+}
 
 
+function displaySuccess(success) {
+
+    const outputString = followList
+        .reduce((accum, item, index) => {
+            return `${accum}${index > 0 ? ' | ' : ''}${item[1]}: ${success[index]}`
+        }, '');
+    
+    return outputString;
 }
 
 /* Webhook function */
 async function followC9(request, response) {
     
-    // Turning username into id
-    const username = request.query.username;
-    const id = 
-            (await axios.get(
-                `https://api.twitter.com/2/users/by/username/${username}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${bearer}`
-                    }
-                })
-            ).data.data.id;
-    
-
-
-
-    const timeStamp = authTimestamp();
-    const nonce = authNonce();
-
-
-    // ???? idk
-    const sigConfig = {
-        'url': `${encodeURIComponent(`https://api.twitter.com/2/users/by/username/${username}`)}`,
-        'oauth_consumer_key': `${encodeURIComponent(apiKey)}`,
-        'oauth_nonce': `${nonce}`,
-        'oauth_signature_method': `HMAC-SHA1`,
-        'oauth_timestamp': `${timeStamp}`,
-        'oauth_token': `${encodeURIComponent(token)}`,
-        'oauth_version': `1.0`
-    }
-
-
-    const signature = authSignature(sigConfig);
-    // following C9 and C9 Stratus
-    const follow = await axios.post(
-                `https://api.twitter.com/2/users/${id}/following`,
-                {
-                    "target_user_id": "1414660862372028443"
-                },
-                {
-                    headers: {
-                        'Authorization':
-                            `OAuth oauth_consumer_key="${apiKey}", oauth_token="${token}", oauth_signature_method="HMAC-SHA1", oauth_timestamp="${timeStamp}", oauth_nonce="${nonce}", oauth_version="1.0", oauth_signature="${signature}"`
-                    }
-                });
-                       
-            
-    //response.send(follow.data);
-
-    response.send(authTimestamp());
-    console.log(authTimestamp());
-    console.log('hi');
-    
+    const id = await getUserId(request.query.username);
+    const tokenInfo = getToken(id);
+    const success = await follow(id, tokenInfo);
+    const display = displaySuccess(success);
+    response.send(display);
 }
 
 
