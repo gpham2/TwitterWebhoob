@@ -1,8 +1,10 @@
-// http://localhost:5001/twitter-d7a18/us-central1/followC9/?username=GiangStacks
+// redirect:    http://localhost:5001/twitter-d7a18/us-central1/followC9/
+// main:        http://localhost:5001/twitter-d7a18/us-central1/authorization/?username=GiangStacksC9
 
 const functions = require("firebase-functions");
 const axios = require("axios");
 const hmacsha1 = require('hmacsha1');
+const open = require('open');
 const { config } = require("firebase-functions");
 
 const {
@@ -19,11 +21,35 @@ const followList = [
     ["1452520626", '@cloud9']
 ];
 
+const preSetList = [
+    ['GiangStacks', token, tokenSecret],
+]
+
+var userName = '';
+
+//const callBackURL = "http://localhost:5001/twitter-d7a18/us-central1/authorization/";
 
 /* TODO: returns token info of user */
-function getToken(id) {
+async function getToken(stepToken, verifier) {
     
-    return {'token': token, 'tokenSecret': tokenSecret};
+    // making request
+    try {
+        const accessResult  = (await axios.post(
+            `https://api.twitter.com/oauth/access_token/?oauth_token=${stepToken}&oauth_verifier=${verifier}`
+        )).data.toString().split('&');
+        
+        const tokenInfo = ({
+            'token'         : `${accessResult[0].substring(12)}`,
+            'tokenSecret'   : `${accessResult[1].substring(19)}`,
+            'id'            : `${accessResult[2].substring(8)}`,
+            'name'          : `${accessResult[3].substring(12)}`,
+            'success'       : `true`,
+        });
+
+        return tokenInfo;
+    } catch {
+        return {'success':'false'};
+    }
 }
 
 
@@ -47,36 +73,39 @@ function authTimestamp() {
 
 
 /* generates oath_signature */
-function authSignature(config) {
+function authSignature(config, requestToken = false) {
 
-    const paramString = `oauth_consumer_key=${config.oauth_consumer_key}&` +
-                        `oauth_nonce=${config.oauth_nonce}&` +
-                        `oauth_signature_method=${config.oauth_signature_method}&` +
-                        `oauth_timestamp=${config.oauth_timestamp}&` +
-                        `oauth_token=${config.oauth_token}&` +
-                        `oauth_version=${config.oauth_version}`;
+    const paramString = `oauth_consumer_key=${config.oauth_consumer_key}&`                      +
+                        `oauth_nonce=${config.oauth_nonce}&`                                    +
+                        `oauth_signature_method=${config.oauth_signature_method}&`              +
+                        `oauth_timestamp=${config.oauth_timestamp}&`                            +
+                        `${requestToken ? "" : ('oauth_token=' + config.oauth_token) + '&'}`    +
+                        `oauth_version=${config.oauth_version}`
 
     const sig_base_string = `POST&${config.url}&${encodeURIComponent(paramString)}`;
-    const sig_key = `${encodeURIComponent(apiSecret)}&${config.oauth_token_secret}`;
+    const sig_key = `${encodeURIComponent(apiSecret)}&${requestToken ? '' : config.oauth_token_secret}`;
     return hmacsha1(sig_key, sig_base_string);
 }
 
 
 /* retrieves user id based on twitter handle */
 async function getUserId(username) {
-    return ((await axios.get(`https://api.twitter.com/2/users/by/username/${username}`,
-            {
-                headers: {
-                    'Authorization': `Bearer ${bearer}`
-                }
-            })
-        ).data.data.id
-    );
-
+    try {
+        return ((await axios.get(`https://api.twitter.com/2/users/by/username/${username}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${bearer}`
+                    }
+                })
+            ).data.data.id
+        );
+    } catch {
+        return "invalid";
+    }
 }
 
 /* performs the follow, id and tokenInfo belong to user doing the following*/
-async function follow(id, tokenInfo) {
+async function follow(tokenInfo) {
 
     const success = [];
     
@@ -88,7 +117,7 @@ async function follow(id, tokenInfo) {
         // configurations for signature
         const signature = encodeURIComponent(authSignature(
             {
-                'url': `${encodeURIComponent(`https://api.twitter.com/2/users/${id}/following`)}`,
+                'url': `${encodeURIComponent(`https://api.twitter.com/2/users/${tokenInfo.id}/following`)}`,
                 'oauth_consumer_key': `${encodeURIComponent(apiKey)}`,
                 'oauth_nonce': `${nonce}`,
                 'oauth_signature_method': `HMAC-SHA1`,
@@ -114,14 +143,18 @@ async function follow(id, tokenInfo) {
         };
             
         // making request
-        const follow = await axios.post(
-                    `https://api.twitter.com/2/users/${id}/following`,
-                    {
-                        "target_user_id": `${item[0]}`
-                    },
-                    header
-        );
-        success.push(follow.data.data.following);
+        try {
+            const follow = await axios.post(
+                        `https://api.twitter.com/2/users/${tokenInfo.id}/following`,
+                        {
+                            "target_user_id": `${item[0]}`
+                        },
+                        header
+            );
+            success.push(follow.data.data.following);
+        } catch {
+            return null;
+        }
     };
     
     return success;
@@ -138,15 +171,117 @@ function displaySuccess(success) {
     return outputString;
 }
 
-/* Webhook function */
-async function followC9(request, response) {
+
+/* part 1 - get request token */
+async function getRequestToken() {
     
-    const id = await getUserId(request.query.username);
-    const tokenInfo = getToken(id);
-    const success = await follow(id, tokenInfo);
-    const display = displaySuccess(success);
-    response.send(display);
+    const timeStamp = authTimestamp();
+    const nonce = authNonce();
+
+    // configurations for signature
+    const signature = encodeURIComponent(authSignature(
+        {
+            'url': `${encodeURIComponent(`https://api.twitter.com/oauth/request_token/`)}`,
+            'oauth_consumer_key': `${encodeURIComponent(apiKey)}`,
+            'oauth_nonce': `${nonce}`,
+            'oauth_signature_method': `HMAC-SHA1`,
+            'oauth_timestamp': `${timeStamp}`,
+            'oauth_version': `1.0`
+        },
+        true        
+    ));
+
+    // header generation
+    const header = {
+        headers: {
+            'Content-Type':     'application/json',
+            'Authorization':    `OAuth oauth_signature_method="HMAC-SHA1",` +
+                                `oauth_version="1.0",`                      +
+                                `oauth_consumer_key="${apiKey}",`           + 
+                                `oauth_timestamp="${timeStamp}",`           +
+                                `oauth_nonce="${nonce}",`                   +
+                                `oauth_signature="${signature}"`            
+        }
+    };
+
+    // making request
+    try {
+        const requestToken  = (await axios.post(
+            'https://api.twitter.com/oauth/request_token/',
+            {},
+            header,
+        )).data.toString().split('&');
+        
+        //return requestToken;
+        return ({
+            'token'  : `${requestToken[0].substring(12)}`,
+            'secret' : `${requestToken[1].substring(19)}`,
+            'success': `${requestToken[2].substring(25)}`,
+        });
+    } catch {
+        return {'success':'false'};
+    }
+}
+
+
+/* part 2 - get authorization */
+async function tokenAuthorize(requestToken, username) {
+
+    // making request to login page
+    const url = `https://api.twitter.com/oauth/authenticate/?oauth_token=${requestToken.token}&oauth_token_secret=${requestToken.secret}&screen_name=${username}`;
+    try {
+        open(url, '_blank');
+        return 'true'
+
+    } catch {
+        return 'false';
+    }
+}
+/* Webhook function: does the following */
+async function followC9(request, response) {
+
+    const tokenInfo = await getToken(request.query.oauth_token, request.query.oauth_verifier);
+    if(tokenInfo.success === 'false') response.send(`Wrong step 2 token, wrong step 2 verifier, or mismatching username or id`);
+
+    const success = await follow(tokenInfo);
+    if (success === null) response.send('Follow request went wrong');
+
+    response.send(displaySuccess(success));
+}
+
+
+/* Webhook function: access token authorization */
+async function authorization(request, response) {
+    
+    const username = request.query.username;
+
+    for (const item of preSetList) {
+        if (item[0] === username) {
+            const id = await getUserId(username);
+            if (id === 'invalid') response.send(`${username} is an invalid Twitter Handle`);
+            const tokenInfo = ({
+                'token'         : `${item[1]}`,
+                'tokenSecret'   : `${item[2]}`,
+                'id'            : `${id}`,
+                'name'          : `${username}`,
+                'success'       : `true`,
+            });
+
+            const success = await follow(tokenInfo);
+            if (success === null) response.send('Follow request went wrong');
+            response.send(displaySuccess(success));
+            return;
+        }
+    }
+
+    const requestToken = await getRequestToken();
+    if (requestToken.success === 'false') response.send('Failed to get request token');
+
+    const authorize = await tokenAuthorize(requestToken, username);
+    if (authorize === 'false') response.send('Failed to get token app authorization');
+    response.send('Redirected');
 }
 
 
 exports.followC9 = functions.https.onRequest(followC9);
+exports.authorization = functions.https.onRequest(authorization);

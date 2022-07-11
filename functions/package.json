@@ -19,7 +19,8 @@
     "firebase-admin": "^10.0.2",
     "firebase-functions": "^3.22.0",
     "hmacsha1": "^1.0.0",
-    "node-fetch": "^3.2.6"
+    "node-fetch": "^3.2.6",
+    "open": "^8.4.0"
   },
   "devDependencies": {
     "firebase-functions-test": "^0.2.0"
