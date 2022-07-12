@@ -17,7 +17,7 @@ const {
 
 
 const followList = [
-    ["1414660862372028443", 'C9Stratus'], 
+    ["1414660862372028443", '@c9stratus'], 
     ["1452520626", '@cloud9']
 ];
 
@@ -25,11 +25,8 @@ const preSetList = [
     ['GiangStacks', token, tokenSecret],
 ]
 
-var userName = '';
 
-//const callBackURL = "http://localhost:5001/twitter-d7a18/us-central1/authorization/";
-
-/* TODO: returns token info of user */
+/* returns token info of user */
 async function getToken(stepToken, verifier) {
     
     // making request
@@ -230,13 +227,15 @@ async function tokenAuthorize(requestToken, username) {
     // making request to login page
     const url = `https://api.twitter.com/oauth/authenticate/?oauth_token=${requestToken.token}&oauth_token_secret=${requestToken.secret}&screen_name=${username}`;
     try {
-        open(url, '_blank');
-        return 'true'
+        const valid = await axios.get(url);
+        return url;
 
     } catch {
         return 'false';
     }
 }
+
+
 /* Webhook function: does the following */
 async function followC9(request, response) {
 
@@ -279,7 +278,7 @@ async function authorization(request, response) {
 
     const authorize = await tokenAuthorize(requestToken, username);
     if (authorize === 'false') response.send('Failed to get token app authorization');
-    response.send('Redirected');
+    response.send(`<script> window.open("${authorize}", "_self"); </script>`);
 }
 
 
