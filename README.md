@@ -48,7 +48,7 @@ twitter API authorization page. After authorizing, the **followC9()** webhook wi
 This is where the "follow" logic takes places.
 
 ## Code Architecture
-![diagram](https://cdn.discordapp.com/attachments/371115539365494794/996509627925680188/unknown.png)
+![diagram](https://cdn.discordapp.com/attachments/371115539365494794/996510389871312966/unknown.png)
 
 
 
