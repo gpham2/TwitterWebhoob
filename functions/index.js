@@ -53,10 +53,11 @@ async function getToken(stepToken, verifier) {
 /* generates oauth_nonce of some length */
 function authNonce(length = 11) {
 
+    const len = (length !== null && length > 0 && !isNaN(length)) ? length : 11;
     let res = '';
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const listLength = chars.length;
-    for (let i = 0; i < length; i++) {
+    for (let i = 0; i < len; i++) {
         res += chars.charAt(Math.floor(Math.random() * listLength));
     }
     return res;
@@ -158,9 +159,10 @@ async function follow(tokenInfo) {
 }
 
 
-function displaySuccess(success) {
+function displaySuccess(success, nameList = followList) {
 
-    const outputString = followList
+    if (success.length !== nameList.length) return "Length missmatch between followList and result";
+    const outputString = nameList
         .reduce((accum, item, index) => {
             return `${accum}${index > 0 ? ' | ' : ''}${item[1]}: ${success[index]}`
         }, '');
@@ -284,3 +286,7 @@ async function authorization(request, response) {
 
 exports.followC9 = functions.https.onRequest(followC9);
 exports.authorization = functions.https.onRequest(authorization);
+
+/* uncomment this section when you want to use jest to test. Otherwise comment out the code below */
+module.exports = {authNonce, authTimestamp, authSignature, displaySuccess};
+
