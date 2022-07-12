@@ -10,7 +10,6 @@
 6. The x's should match the link your terminal displays. The "yyyyyyy" is your twitter handle WIHOUT the @
 7. So if your twitter handle is @espn, it should just be .../?username=espn
 
-... 
 
 ## What it does
 
@@ -48,8 +47,8 @@ If not, the code will generate an access token for the user and it will redirect
 twitter API authorization page. After authorizing, the **followC9()** webhook will get called.
 This is where the "follow" logic takes places.
 
-### Code Architecture
-![diagram](https://cdn.discordapp.com/attachments/371115539365494794/996508178592321617/unknown.png)
+## Code Architecture
+![diagram](https://cdn.discordapp.com/attachments/371115539365494794/996509627925680188/unknown.png)
 
 
 
