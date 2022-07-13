@@ -70,8 +70,47 @@ function authTimestamp() {
 }
 
 
+
+/* check configurations for oath_signature is correct */
+function configChecker(config, requestToken) {
+
+    // checks for required properties
+    if (
+        config.oauth_consumer_key        === undefined  || config.oauth_consumer_key === null ||
+        config.oauth_nonce               === undefined  || config.oauth_nonce        === null ||
+        config.oauth_timestamp           === undefined  || config.oauth_timestamp    === null ||
+        config.url                       === undefined  || config.url                === null ||
+        config.oauth_signature_method    !== 'HMAC-SHA1'|| config.oauth_version      !== `1.0`
+
+    ) return [false, 'config missing required properties or HMAC-SHA1 and version 1.0 is not set'];
+
+    // checks if semi-optional properties met request Token param
+    if (requestToken === false && (
+        config.oauth_token        === undefined || config.oauth_token        === null ||
+        config.oauth_token_secret === undefined || config.oauth_token_secret === null
+        )  
+
+    ) return [false, 'config optional properties does not match requestToken param'];
+
+    // checks if timestamp is a non negative number
+    if (
+        isNaN(config.oauth_timestamp) || parseInt(config.oauth_timestamp) < 0
+
+    ) return [false, 'config timestamp is not a valid integer'];
+
+    // passes all checks
+    return [true, 'config is valid'];
+}
+
 /* generates oath_signature */
 function authSignature(config, requestToken = false) {
+
+    // Configurations error checking
+    const isValid = configChecker(config, requestToken);
+    if (isValid[0] === false) {
+        console.log(isValid[1]);
+        return null;
+    }
 
     const paramString = `oauth_consumer_key=${config.oauth_consumer_key}&`                      +
                         `oauth_nonce=${config.oauth_nonce}&`                                    +
@@ -80,8 +119,8 @@ function authSignature(config, requestToken = false) {
                         `${requestToken ? "" : ('oauth_token=' + config.oauth_token) + '&'}`    +
                         `oauth_version=${config.oauth_version}`
 
-    const sig_base_string = `POST&${config.url}&${encodeURIComponent(paramString)}`;
-    const sig_key = `${encodeURIComponent(apiSecret)}&${requestToken ? '' : config.oauth_token_secret}`;
+    const sig_base_string = `POST&${(config.url)}&${encodeURIComponent(paramString)}`;
+    const sig_key = `${encodeURIComponent(config.oauth_consumer_secret)}&${requestToken ? '' : config.oauth_token_secret}`;
     return hmacsha1(sig_key, sig_base_string);
 }
 
@@ -117,6 +156,7 @@ async function follow(tokenInfo) {
             {
                 'url': `${encodeURIComponent(`https://api.twitter.com/2/users/${tokenInfo.id}/following`)}`,
                 'oauth_consumer_key': `${encodeURIComponent(apiKey)}`,
+                'oauth_consumer_secret': `${encodeURIComponent(apiSecret)}`,
                 'oauth_nonce': `${nonce}`,
                 'oauth_signature_method': `HMAC-SHA1`,
                 'oauth_timestamp': `${timeStamp}`,
@@ -125,6 +165,8 @@ async function follow(tokenInfo) {
                 'oauth_version': `1.0`
             }        
         ));
+
+        if (signature === null) return null;
         
         // generating header 
         const header = {
@@ -182,6 +224,7 @@ async function getRequestToken() {
         {
             'url': `${encodeURIComponent(`https://api.twitter.com/oauth/request_token/`)}`,
             'oauth_consumer_key': `${encodeURIComponent(apiKey)}`,
+            'oauth_consumer_secret': `${encodeURIComponent(apiSecret)}`,
             'oauth_nonce': `${nonce}`,
             'oauth_signature_method': `HMAC-SHA1`,
             'oauth_timestamp': `${timeStamp}`,
@@ -189,6 +232,8 @@ async function getRequestToken() {
         },
         true        
     ));
+    
+    if (signature === null) return {'success':'false'};
 
     // header generation
     const header = {
@@ -288,5 +333,5 @@ exports.followC9 = functions.https.onRequest(followC9);
 exports.authorization = functions.https.onRequest(authorization);
 
 /* uncomment this section when you want to use jest to test. Otherwise comment out the code below */
-module.exports = {authNonce, authTimestamp, authSignature, displaySuccess};
+//module.exports = {authNonce, authTimestamp, authSignature, displaySuccess};
 
